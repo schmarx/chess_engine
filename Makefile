@@ -14,8 +14,7 @@ SRC = src/main.cpp
 
 output_file = bin/main
 
-includes = -L/usr/include/SDL2/
-links = -lSDL2 -lSDL2_ttf -lm
+links = -lm
 
 FLAGS = -Wall -pedantic -O3
 
@@ -23,7 +22,7 @@ OBJ = ${subst src,bin,${SRC:.cpp=.o}}
 
 run: ${OBJ}
 	@printf "${FMT_GREEN}linking${FMT_RESET}\n"
-	@g++ ${FLAGS} ${OBJ} -o ${output_file} ${includes} ${links}
+	@g++ ${FLAGS} ${OBJ} -o ${output_file} ${links}
 	${output_file} ${N} ${w} ${h}
 
 clean:

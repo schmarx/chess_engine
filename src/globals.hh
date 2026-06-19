@@ -1,6 +1,6 @@
 #include <stdio.h>
 
-#define PORT 1337
+#define PORT 1340
 #define MOVE_BUF_LEN 10
 #define TCP_BUF_LEN 1000
 
@@ -35,10 +35,49 @@ class Pos {
 		this->y = y;
 	}
 
+	Pos(char x, int y) {
+		this->x = x - 'a';
+		this->y = y - 1;
+	}
+
 	// if the move is in the board
 	bool in_board() {
 		if (x >= 0 && x < 8 && y >= 0 && y < 8) return true;
 		return false;
+	}
+};
+
+class Move {
+  public:
+	Pos start;
+	Pos end;
+	Move(char *input) {
+		char x1;
+		char x2;
+		int y1;
+		int y2;
+
+		sscanf(input, "%c%i%c%i", &x1, &y1, &x2, &y2);
+		printf("%c%i -> %c%i\n", x1, y1, x2, y2);
+		Pos pos1 = Pos(x1, y1);
+		Pos pos2 = Pos(x2, y2);
+
+		start = pos1;
+		end = pos2;
+
+		printf("move (%i, %i) -> (%i, %i)\n", start.x, start.y, end.x, end.y);
+	}
+
+	Move(Pos start, Pos end) {
+		this->start = start;
+		this->end = end;
+	}
+
+	void to_string(char *str) {
+		str[0] = start.x + 'a';
+		str[1] = start.y + '1';
+		str[2] = end.x + 'a';
+		str[3] = end.y + '1';
 	}
 };
 

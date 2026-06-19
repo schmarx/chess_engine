@@ -1,6 +1,7 @@
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <thread>
 #include <vector>
 
@@ -22,6 +23,14 @@ class engine {
 	Piece board[8][8];
 	int *board_binary;
 	int board_binary_size;
+
+	bool allow_castle_left_white;
+	bool allow_castle_left_black;
+	bool allow_castle_right_white;
+	bool allow_castle_right_black;
+
+	char next_move[20];
+	volatile bool has_move = false;
 
 	std::vector<int> gui_clients;
 
@@ -91,21 +100,18 @@ class engine {
 		printf("     a  b  c  d  e  f  g  h\n");
 	}
 
-	Pos get_move(const char *msg) {
-		Pos move;
-		printf(msg);
+	Move get_move(const char *msg) {
+		while (!has_move) {
+			// waiting
+		}
 
-		char x;
-		int y;
+		has_move = false;
 
-		char buf[MOVE_BUF_LEN];
-		fgets(buf, MOVE_BUF_LEN, stdin);
-		sscanf(buf, "%c%i", &x, &y);
+		// char buf[MOVE_BUF_LEN];
+		// printf(msg);
+		// fgets(buf, MOVE_BUF_LEN, stdin);
 
-		move.x = x - 'a';
-		move.y = y - 1;
-
-		return move;
+		return Move(next_move);
 	}
 
 	bool is_turn(Pos pos) {
@@ -117,7 +123,7 @@ class engine {
 	}
 
 	bool is_empty(Pos pos) {
-		return board[pos.y][pos.x].color == NONE;
+		return board[pos.y][pos.x].color == NONE || board[pos.y][pos.x].type == PIECE_EMPTY;
 	}
 
 	void err(const char *msg, ...) {
@@ -130,12 +136,16 @@ class engine {
 		printf("\n");
 	}
 
-	void commit_move(Pos start, Pos end) {
+	void commit_move(Move move) {
+		Pos start = move.start;
+		Pos end = move.end;
+
 		board[end.y][end.x] = board[start.y][start.x];
 		board[start.y][start.x] = Piece();
 	}
 
 	bool validate_pawn(Pos start, Pos end) {
+		// TODO: check en passant and promotion
 		bool same_col = start.x == end.x;
 		bool one_up = end.y - start.y == pawn_dir[player_turn];
 		bool two_up = end.y - start.y == 2 * pawn_dir[player_turn];
@@ -162,6 +172,35 @@ class engine {
 		return true;
 	}
 
+	bool check_line(Pos start, Pos end) {
+		int dx = end.x - start.x;
+		int dy = end.y - start.y;
+
+		int step_x = dx / abs(dx);
+		int step_y = dy / abs(dy);
+
+		if (dx == 0) step_x = 0;
+		if (dy == 0) step_y = 0;
+
+		Pos pos = Pos(start.x + step_x, start.y + step_y);
+		while (pos.x != end.x || pos.y != end.y) {
+			if (!is_empty(pos)) {
+				err("piece in the way");
+				return false;
+			}
+
+			pos.x += step_x;
+			pos.y += step_y;
+		}
+
+		if (!is_empty(end) && !is_opp(end)) {
+			err("cannot capture own piece");
+			return false;
+		}
+
+		return true;
+	}
+
 	bool validate_bishop(Pos start, Pos end) {
 		int dx = end.x - start.x;
 		int dy = end.y - start.y;
@@ -169,32 +208,61 @@ class engine {
 		if (abs(dx) != abs(dy)) {
 			err("move must be diagonal");
 			return false;
-		} else {
-			int step_x = dx / abs(dx);
-			int step_y = dy / abs(dy);
+		}
+		return check_line(start, end);
+	}
 
-			Pos pos = Pos(start.x, start.y);
-			while (pos.x != end.x && pos.y != end.y) {
-				printf("check [%i, %i]\n", pos.x, pos.y);
-				if (!is_empty(pos)) {
-					err("piece in the way");
-					return false;
-				}
+	bool validate_rook(Pos start, Pos end) {
+		int dx = end.x - start.x;
+		int dy = end.y - start.y;
 
-				pos.x += step_x;
-				pos.y += step_y;
-			}
+		if (dx != 0 && dy != 0) {
+			err("move must be along an axis");
+			return false;
+		}
+		return check_line(start, end);
+	}
 
-			if (!is_empty(pos) && !is_opp(pos)) {
-				err("cannot caputre own piece");
+	bool validate_knight(Pos start, Pos end) {
+		int dx = end.x - start.x;
+		int dy = end.y - start.y;
+
+		if ((abs(dx) == 1 && abs(dy) == 2) || (abs(dx) == 2 && abs(dy) == 1)) {
+			if (!is_empty(end) && !is_opp(end)) {
+				err("cannot capture own piece");
 				return false;
 			}
+
+			return true;
+		}
+
+		err("invalid move");
+		return false;
+	}
+
+	bool validate_queen(Pos start, Pos end) {
+		if (validate_bishop(start, end) || validate_rook(start, end)) {
+			return true;
+		}
+
+		return false;
+	}
+
+	bool validate_king(Pos start, Pos end) {
+		int dx = end.x - start.x;
+		int dy = end.y - start.y;
+		if (abs(dx) > 1 || abs(dy) > 1) {
+			// TODO: check for castle
+			err("must move to adjacent square");
+			return false;
 		}
 
 		return true;
 	}
 
-	bool validate_move(Pos start, Pos end) {
+	bool validate_move(Move move) {
+		Pos start = move.start;
+		Pos end = move.end;
 		switch (board[start.y][start.x].type) {
 		case PIECE_PAWN:
 			return validate_pawn(start, end);
@@ -202,6 +270,22 @@ class engine {
 
 		case PIECE_BISHOP:
 			return validate_bishop(start, end);
+			break;
+
+		case PIECE_ROOK:
+			return validate_rook(start, end);
+			break;
+
+		case PIECE_KNIGHT:
+			return validate_knight(start, end);
+			break;
+
+		case PIECE_QUEEN:
+			return validate_queen(start, end);
+			break;
+
+		case PIECE_KING:
+			return validate_king(start, end);
 			break;
 
 		default:
@@ -212,22 +296,25 @@ class engine {
 	}
 
 	void make_move() {
-		Pos start = get_move("start:");
-		Pos end = get_move("end:");
+		Move move = get_move("move:");
 
-		if (!start.in_board()) {
+		if (!move.start.in_board()) {
 			return err("start not in board");
 		}
-		if (!end.in_board()) {
+		if (!move.end.in_board()) {
 			return err("end not in board");
 		}
 
-		if (!is_turn(start)) {
+		if (move.start.x == move.end.x && move.start.y == move.end.y) {
+			return err("end position identical to start position");
+		}
+
+		if (!is_turn(move.start)) {
 			return err("starting square is not player %s", color_codes[player_turn]);
 		}
 
-		if (validate_move(start, end)) {
-			commit_move(start, end);
+		if (validate_move(move)) {
+			commit_move(move);
 
 			if (player_turn == WHITE) player_turn = BLACK;
 			else player_turn = WHITE;
@@ -289,6 +376,8 @@ class engine {
 				} else {
 					// a response consissting of res bytes is received
 					printf("received message \"%s\"\n", buf);
+					strcpy(next_move, buf);
+					has_move = true;
 				}
 			}
 		}

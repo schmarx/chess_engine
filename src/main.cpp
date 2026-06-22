@@ -1,13 +1,22 @@
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <thread>
 
 #include "engine.hh"
 
-int main(int argc, char *argv[]) {
-	chess::engine eng = chess::engine();
+chess::engine eng;
 
-	std::thread th = std::thread(&chess::engine::register_broadcast, &eng, 1);
+void handle_interrupt(int signal) {
+	printf("\n");
+	eng.close_engine();
+
+	exit(0);
+}
+
+int main(int argc, char *argv[]) {
+	signal(SIGINT, handle_interrupt);
+
+	eng.create_server();
 	eng.run();
 
 	return EXIT_SUCCESS;

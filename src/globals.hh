@@ -1,3 +1,4 @@
+#include <stdarg.h>
 #include <stdio.h>
 #include <vector>
 
@@ -6,6 +7,9 @@
 #define PORT 1338
 #define MOVE_BUF_LEN 10
 #define TCP_BUF_LEN 1000
+
+#define board_binary_bytes (1 + 8 * 8 * 2)
+#define board_binary_size (sizeof(int) * board_binary_bytes)
 
 #define no_msg() (errno == EAGAIN || errno == EWOULDBLOCK)
 #define UP() pawn_dir[player_turn]
@@ -64,6 +68,10 @@ class Move {
   public:
 	Pos start;
 	Pos end;
+
+	Move() {
+	}
+
 	Move(char *input) {
 		char x1;
 		char x2;
@@ -149,12 +157,60 @@ class Board {
 		else player_turn = WHITE;
 	}
 
+	int get_score() {
+		int score = 0;
+		for (int y = 0; y < 8; y++) {
+			for (int x = 0; x < 8; x++) {
+				int add = 0;
+
+				switch (rows[y][x].type) {
+				case PIECE_PAWN:
+					add = 1;
+					break;
+
+				case PIECE_BISHOP:
+					add = 3;
+					break;
+
+				case PIECE_ROOK:
+					add = 5;
+					break;
+
+				case PIECE_KNIGHT:
+					add = 3;
+					break;
+
+				case PIECE_QUEEN:
+					add = 9;
+					break;
+
+				case PIECE_KING:
+					add = 100000;
+					break;
+
+				default:
+					break;
+				}
+
+				score += add * pawn_dir[rows[y][x].color];
+			}
+		}
+
+		return score;
+	}
+
 	void commit(Move move) {
 		Pos start = move.start;
 		Pos end = move.end;
 
 		rows[end.y][end.x] = rows[start.y][start.x];
 		rows[start.y][start.x] = Piece();
+
+		if (stage) {
+			char str[12] = "";
+			move.to_string(str);
+			logger->note("made move \"%s\", score = %i", str, get_score());
+		}
 	}
 
 	bool validate(std::vector<Move> &moves, Move move) {
@@ -334,11 +390,11 @@ class Board {
 
 		timespec_get(&end, TIME_UTC);
 		if (stage) {
-			char str[12] = "";
-			for (size_t i = 0; i < moves.size(); i++) {
-				moves[i].to_string(str);
-				printf("%s\n", str);
-			}
+			// char str[12] = "";
+			// for (size_t i = 0; i < moves.size(); i++) {
+			// 	moves[i].to_string(str);
+			// 	printf("%s\n", str);
+			// }
 
 			logger->note("found %li valid moves (%lins)", moves.size(), 1000000000 * (end.tv_sec - start.tv_sec) + (end.tv_nsec - start.tv_nsec));
 		}
@@ -383,6 +439,9 @@ class Board {
 };
 
 void board_to_binary(Board board, int *board_binary) {
+	int offset = 0;
+	board_binary[offset++] = board.player_turn;
+
 	int col_bytes = 2;
 	int row_bytes = 8 * col_bytes;
 
@@ -391,13 +450,16 @@ void board_to_binary(Board board, int *board_binary) {
 
 	for (int y = 0; y < 8; y++) {
 		for (int x = 0; x < 8; x++) {
-			board_binary[row_bytes * y + col_bytes * x + piece] = board[y][x].type;
-			board_binary[row_bytes * y + col_bytes * x + color] = board[y][x].color;
+			board_binary[offset + row_bytes * y + col_bytes * x + piece] = board[y][x].type;
+			board_binary[offset + row_bytes * y + col_bytes * x + color] = board[y][x].color;
 		}
 	}
 }
 
 void binary_to_board(Board &board, int *board_binary) {
+	int offset = 0;
+	board.player_turn = (COLOR)board_binary[offset++];
+
 	int col_bytes = 2;
 	int row_bytes = 8 * col_bytes;
 
@@ -406,8 +468,8 @@ void binary_to_board(Board &board, int *board_binary) {
 
 	for (int y = 0; y < 8; y++) {
 		for (int x = 0; x < 8; x++) {
-			board[y][x].type = (PIECE_TYPE)board_binary[row_bytes * y + col_bytes * x + piece];
-			board[y][x].color = (COLOR)board_binary[row_bytes * y + col_bytes * x + color];
+			board[y][x].type = (PIECE_TYPE)board_binary[offset + row_bytes * y + col_bytes * x + piece];
+			board[y][x].color = (COLOR)board_binary[offset + row_bytes * y + col_bytes * x + color];
 		}
 	}
 }

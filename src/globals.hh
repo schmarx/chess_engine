@@ -8,9 +8,6 @@
 #define MOVE_BUF_LEN 10
 #define TCP_BUF_LEN 1000
 
-#define board_binary_bytes (1 + 8 * 8 * 2)
-#define board_binary_size (sizeof(int) * board_binary_bytes)
-
 #define no_msg() (errno == EAGAIN || errno == EWOULDBLOCK)
 #define UP() pawn_dir[player_turn]
 #define UPP() (2 * pawn_dir[player_turn])
@@ -32,6 +29,11 @@ typedef enum {
 	WHITE,
 	BLACK
 } COLOR;
+
+typedef struct {
+	COLOR turn;
+	int board[8][8][2];
+} packet;
 
 char piece_codes[] = {' ', 'p', 'b', 'n', 'r', 'q', 'k'};
 const char *color_codes[] = {"empty", "white", "black"};
@@ -438,38 +440,24 @@ class Board {
 	}
 };
 
-void board_to_binary(Board board, int *board_binary) {
-	int offset = 0;
-	board_binary[offset++] = board.player_turn;
-
-	int col_bytes = 2;
-	int row_bytes = 8 * col_bytes;
-
-	int piece = 0;
-	int color = 1;
+void board_to_packet(Board &board, packet &board_binary) {
+	board_binary.turn = board.player_turn;
 
 	for (int y = 0; y < 8; y++) {
 		for (int x = 0; x < 8; x++) {
-			board_binary[offset + row_bytes * y + col_bytes * x + piece] = board[y][x].type;
-			board_binary[offset + row_bytes * y + col_bytes * x + color] = board[y][x].color;
+			board_binary.board[y][x][0] = board[y][x].type;
+			board_binary.board[y][x][1] = board[y][x].color;
 		}
 	}
 }
 
-void binary_to_board(Board &board, int *board_binary) {
-	int offset = 0;
-	board.player_turn = (COLOR)board_binary[offset++];
-
-	int col_bytes = 2;
-	int row_bytes = 8 * col_bytes;
-
-	int piece = 0;
-	int color = 1;
+void packet_to_board(Board &board, packet &board_binary) {
+	board.player_turn = board_binary.turn;
 
 	for (int y = 0; y < 8; y++) {
 		for (int x = 0; x < 8; x++) {
-			board[y][x].type = (PIECE_TYPE)board_binary[offset + row_bytes * y + col_bytes * x + piece];
-			board[y][x].color = (COLOR)board_binary[offset + row_bytes * y + col_bytes * x + color];
+			board[y][x].type = (PIECE_TYPE)board_binary.board[y][x][0];
+			board[y][x].color = (COLOR)board_binary.board[y][x][1];
 		}
 	}
 }

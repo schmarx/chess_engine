@@ -21,7 +21,7 @@ class engine {
 	bool running = true;
 
 	Board board;
-	int *board_binary;
+	packet board_binary;
 
 	bool allow_castle_left_white;
 	bool allow_castle_left_black;
@@ -38,10 +38,9 @@ class engine {
 	engine() {
 		printf("\n");
 		logger.note("starting engine");
-		board_binary = (int *)calloc(8 * 8 * 2, sizeof(int));
 		board.init();
 		board.logger = &logger;
-		board_to_binary(board, board_binary);
+		board_to_packet(board, board_binary);
 	}
 
 	Move get_move(const char *msg) {
@@ -84,11 +83,12 @@ class engine {
 	}
 
 	void send_board_all() {
-		board_to_binary(board, board_binary);
+		board_to_packet(board, board_binary);
 
 		logger.net("sending board to %li clients", gui_clients.size());
+
 		for (size_t i = 0; i < gui_clients.size(); i++) {
-			send(gui_clients[i], board_binary, board_binary_size, 0);
+			send(gui_clients[i], (void *)&board_binary, sizeof(packet), 0);
 		}
 	}
 
@@ -131,7 +131,7 @@ class engine {
 
 				int player_color = WHITE;
 				send(client, &player_color, sizeof(int), 0);
-				send(client, board_binary, board_binary_size, 0);
+				send(client, (void *)&board_binary, sizeof(packet), 0);
 			}
 
 			for (size_t i = 0; i < gui_clients.size(); i++) {

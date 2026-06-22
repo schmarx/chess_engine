@@ -22,7 +22,6 @@ class engine {
 
 	Board board;
 	int *board_binary;
-	int board_binary_size;
 
 	bool allow_castle_left_white;
 	bool allow_castle_left_black;
@@ -39,7 +38,6 @@ class engine {
 	engine() {
 		printf("\n");
 		logger.note("starting engine");
-		board_binary_size = sizeof(int) * 8 * 8 * 2;
 		board_binary = (int *)calloc(8 * 8 * 2, sizeof(int));
 		board.init();
 		board.logger = &logger;
@@ -130,6 +128,9 @@ class engine {
 				// a connection is received
 				gui_clients.push_back(client);
 				logger.net("received connection (%i connections total)", gui_clients.size());
+
+				int player_color = WHITE;
+				send(client, &player_color, sizeof(int), 0);
 				send(client, board_binary, board_binary_size, 0);
 			}
 

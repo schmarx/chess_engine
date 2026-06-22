@@ -60,7 +60,7 @@ class engine {
 		return Move(next_move);
 	}
 
-	void make_move() {
+	void make_move(std::vector<Move> &moves) {
 		Move move = get_move("move:");
 
 		if (!move.start.in_board()) {
@@ -78,10 +78,11 @@ class engine {
 			return logger.err("starting square is not player %s", color_codes[board.player_turn]);
 		}
 
-		if (board.validate(move)) {
-			board.commit(move);
-			board.next_turn();
+		if (!board.validate(moves, move)) {
+			return logger.err("move is invalid");
 		}
+		board.commit(move);
+		board.next_turn();
 	}
 
 	void send_board_all() {
@@ -167,7 +168,8 @@ class engine {
 	void run() {
 		while (running) {
 			// board.draw();
-			make_move();
+			std::vector<Move> moves = board.get_valid_moves();
+			make_move(moves);
 			send_board_all();
 		}
 	}

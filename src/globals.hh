@@ -1,8 +1,9 @@
 #include <stdio.h>
+#include <vector>
 
 #include "logger.hh"
 
-#define PORT 1337
+#define PORT 1338
 #define MOVE_BUF_LEN 10
 #define TCP_BUF_LEN 1000
 
@@ -48,6 +49,10 @@ class Pos {
 		this->y = y - 1;
 	}
 
+	bool operator==(Pos pos) {
+		return (x == pos.x && y == pos.y);
+	}
+
 	// if the move is in the board
 	bool in_board() {
 		if (x >= 0 && x < 8 && y >= 0 && y < 8) return true;
@@ -76,6 +81,10 @@ class Move {
 	Move(Pos start, Pos end) {
 		this->start = start;
 		this->end = end;
+	}
+
+	bool operator==(Move move) {
+		return (start == move.start && end == move.end);
 	}
 
 	void to_string(char *str) {
@@ -125,9 +134,14 @@ class Board {
   public:
 	COLOR player_turn;
 	Logger *logger;
+	bool stage = true;
 
 	BoardRow &operator[](int index) {
 		return rows[index];
+	}
+
+	Piece &operator[](Pos pos) {
+		return rows[pos.y][pos.x];
 	}
 
 	void next_turn() {
@@ -143,152 +157,9 @@ class Board {
 		rows[start.y][start.x] = Piece();
 	}
 
-	bool validate_pawn(Pos start, Pos end) {
-		// TODO: check en passant and promotion
-		bool same_col = (start.x == end.x);
-		bool one_up = (end.y - start.y == UP());
-		bool two_up = (end.y - start.y == UPP());
-
-		bool one_side = abs(start.x - end.x) == 1;
-
-		if (same_col && (one_up || two_up)) {
-			Pos above = Pos(start.x, start.y + UP());
-			if (!is_empty(end) || (two_up && !is_empty(above))) {
-				logger->err("piece in the way");
-				return false;
-			}
-
-		} else if (one_side && one_up) {
-			if (!is_opp(end)) {
-				logger->err("no piece to capture");
-				return false;
-			}
-		} else {
-			logger->err("invalid destination");
-			return false;
-		}
-
-		return true;
-	}
-
-	bool check_line(Pos start, Pos end) {
-		int dx = end.x - start.x;
-		int dy = end.y - start.y;
-
-		int step_x = dx / abs(dx);
-		int step_y = dy / abs(dy);
-
-		if (dx == 0) step_x = 0;
-		if (dy == 0) step_y = 0;
-
-		Pos pos = Pos(start.x + step_x, start.y + step_y);
-		while (pos.x != end.x || pos.y != end.y) {
-			if (!is_empty(pos)) {
-				logger->err("piece in the way");
-				return false;
-			}
-
-			pos.x += step_x;
-			pos.y += step_y;
-		}
-
-		if (!is_empty(end) && !is_opp(end)) {
-			logger->err("cannot capture own piece");
-			return false;
-		}
-
-		return true;
-	}
-
-	bool validate_bishop(Pos start, Pos end) {
-		int dx = end.x - start.x;
-		int dy = end.y - start.y;
-
-		if (abs(dx) != abs(dy)) {
-			logger->err("move must be diagonal");
-			return false;
-		}
-		return check_line(start, end);
-	}
-
-	bool validate_rook(Pos start, Pos end) {
-		int dx = end.x - start.x;
-		int dy = end.y - start.y;
-
-		if (dx != 0 && dy != 0) {
-			logger->err("move must be along an axis");
-			return false;
-		}
-		return check_line(start, end);
-	}
-
-	bool validate_knight(Pos start, Pos end) {
-		int dx = end.x - start.x;
-		int dy = end.y - start.y;
-
-		if ((abs(dx) == 1 && abs(dy) == 2) || (abs(dx) == 2 && abs(dy) == 1)) {
-			if (!is_empty(end) && !is_opp(end)) {
-				logger->err("cannot capture own piece");
-				return false;
-			}
-
-			return true;
-		}
-
-		logger->err("invalid move");
-		return false;
-	}
-
-	bool validate_queen(Pos start, Pos end) {
-		if (validate_bishop(start, end) || validate_rook(start, end)) {
-			return true;
-		}
-
-		return false;
-	}
-
-	bool validate_king(Pos start, Pos end) {
-		int dx = end.x - start.x;
-		int dy = end.y - start.y;
-		if (abs(dx) > 1 || abs(dy) > 1) {
-			// TODO: check for castle
-			logger->err("must move to adjacent square");
-			return false;
-		}
-
-		return true;
-	}
-
-	bool validate(Move move) {
-		Pos start = move.start;
-		Pos end = move.end;
-		switch (rows[start.y][start.x].type) {
-		case PIECE_PAWN:
-			return validate_pawn(start, end);
-			break;
-
-		case PIECE_BISHOP:
-			return validate_bishop(start, end);
-			break;
-
-		case PIECE_ROOK:
-			return validate_rook(start, end);
-			break;
-
-		case PIECE_KNIGHT:
-			return validate_knight(start, end);
-			break;
-
-		case PIECE_QUEEN:
-			return validate_queen(start, end);
-			break;
-
-		case PIECE_KING:
-			return validate_king(start, end);
-			break;
-
-		default:
-			break;
+	bool validate(std::vector<Move> &moves, Move move) {
+		for (size_t i = 0; i < moves.size(); i++) {
+			if (moves[i] == move) return true;
 		}
 
 		return false;
@@ -333,6 +204,150 @@ class Board {
 		rows[7][4] = Piece(PIECE_KING, BLACK);
 
 		player_turn = WHITE;
+	}
+
+	// this evaluates what moves are allowed if the given move was made
+	bool stage_move(Move move) {
+		Board staging_board = *this;
+		staging_board.stage = false; // the staging board should not recursively stage more boards
+		staging_board.commit(move);
+		staging_board.next_turn();
+
+		std::vector<Move> moves = staging_board.get_valid_moves();
+
+		// check if the move allows the opponent to take the king
+		for (size_t i = 0; i < moves.size(); i++) {
+			if (staging_board[moves[i].end].type == PIECE_KING) return false;
+		}
+
+		return true;
+	}
+
+	void add_move(std::vector<Move> &moves, Move move) {
+		if (move.end.in_board() && (is_empty(move.end) || is_opp(move.end))) {
+			if (!stage || stage_move(move)) moves.push_back(move);
+		}
+	}
+
+	void iterate_move(std::vector<Move> &moves, Pos start, int dx, int dy) {
+		Pos pos = start;
+		pos.x += dx;
+		pos.y += dy;
+
+		while (pos.x < 8 && pos.x >= 0 && pos.y < 8 && pos.y >= 0) {
+			add_move(moves, Move(start, pos));
+			if (!is_empty(pos)) {
+				// the line is interrupted
+				return;
+			}
+
+			pos.x += dx;
+			pos.y += dy;
+		}
+
+		// add the final position
+		add_move(moves, Move(start, pos));
+	}
+
+	std::vector<Move> get_valid_moves() {
+		struct timespec start;
+		struct timespec end;
+		timespec_get(&start, TIME_UTC);
+
+		std::vector<Move> moves;
+		for (int y = 0; y < 8; y++) {
+			for (int x = 0; x < 8; x++) {
+				if (rows[y][x].color == player_turn) {
+					Pos start = Pos(x, y);
+
+					switch (rows[start.y][start.x].type) {
+					case PIECE_PAWN:
+
+						if (is_empty(Pos(x, y + UP()))) add_move(moves, Move(start, Pos(x, y + UP())));
+						if (is_opp(Pos(x + 1, y + UP()))) add_move(moves, Move(start, Pos(x + 1, y + UP())));
+						if (is_opp(Pos(x - 1, y + UP()))) add_move(moves, Move(start, Pos(x - 1, y + UP())));
+						if (is_empty(Pos(x, y + UP())) && is_empty(Pos(x, y + UPP()))) add_move(moves, Move(start, Pos(x, y + UPP())));
+
+						break;
+
+					case PIECE_BISHOP:
+						iterate_move(moves, start, 1, 1);
+						iterate_move(moves, start, 1, -1);
+						iterate_move(moves, start, -1, 1);
+						iterate_move(moves, start, -1, -1);
+
+						break;
+
+					case PIECE_ROOK:
+						iterate_move(moves, start, 0, 1);
+						iterate_move(moves, start, 0, -1);
+						iterate_move(moves, start, 1, 0);
+						iterate_move(moves, start, -1, 0);
+
+						break;
+
+					case PIECE_KNIGHT:
+						add_move(moves, Move(start, Pos(x + 1, y + 2)));
+						add_move(moves, Move(start, Pos(x + 1, y - 2)));
+						add_move(moves, Move(start, Pos(x - 1, y + 2)));
+						add_move(moves, Move(start, Pos(x - 1, y - 2)));
+
+						add_move(moves, Move(start, Pos(x + 2, y + 1)));
+						add_move(moves, Move(start, Pos(x + 2, y - 1)));
+						add_move(moves, Move(start, Pos(x - 2, y + 1)));
+						add_move(moves, Move(start, Pos(x - 2, y - 1)));
+
+						break;
+
+					case PIECE_QUEEN:
+						iterate_move(moves, start, 1, 1);
+						iterate_move(moves, start, 1, -1);
+						iterate_move(moves, start, -1, 1);
+						iterate_move(moves, start, -1, -1);
+
+						iterate_move(moves, start, 0, 1);
+						iterate_move(moves, start, 0, -1);
+						iterate_move(moves, start, 1, 0);
+						iterate_move(moves, start, -1, 0);
+
+						break;
+
+					case PIECE_KING:
+						add_move(moves, Move(start, Pos(x, y + 1)));
+						add_move(moves, Move(start, Pos(x, y - 1)));
+						add_move(moves, Move(start, Pos(x + 1, y)));
+						add_move(moves, Move(start, Pos(x - 1, y)));
+
+						add_move(moves, Move(start, Pos(x + 1, y + 1)));
+						add_move(moves, Move(start, Pos(x + 1, y - 1)));
+						add_move(moves, Move(start, Pos(x - 1, y + 1)));
+						add_move(moves, Move(start, Pos(x - 1, y - 1)));
+
+						break;
+
+					default:
+						break;
+					}
+				}
+			}
+		}
+
+		timespec_get(&end, TIME_UTC);
+		if (stage) {
+			char str[12] = "";
+			for (size_t i = 0; i < moves.size(); i++) {
+				moves[i].to_string(str);
+				printf("%s\n", str);
+			}
+
+			logger->note("found %li valid moves (%lins)", moves.size(), 1000000000 * (end.tv_sec - start.tv_sec) + (end.tv_nsec - start.tv_nsec));
+		}
+
+		if (moves.size() == 0) {
+			// TODO: handle checkmate
+		}
+
+		return moves;
 	}
 
 	void clear() {

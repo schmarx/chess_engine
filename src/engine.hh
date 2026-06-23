@@ -88,6 +88,7 @@ class engine {
 		logger.net("sending board to %li clients", gui_clients.size());
 
 		for (size_t i = 0; i < gui_clients.size(); i++) {
+			board_binary.you = WHITE;
 			send(gui_clients[i], (void *)&board_binary, sizeof(packet), 0);
 		}
 	}
@@ -129,8 +130,8 @@ class engine {
 				gui_clients.push_back(client);
 				logger.net("received connection (%i connections total)", gui_clients.size());
 
-				int player_color = WHITE;
-				send(client, &player_color, sizeof(int), 0);
+				COLOR player_color = WHITE;
+				board_binary.you = player_color;
 				send(client, (void *)&board_binary, sizeof(packet), 0);
 			}
 

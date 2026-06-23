@@ -31,8 +31,10 @@ typedef enum {
 } COLOR;
 
 typedef struct {
-	COLOR turn;
+	COLOR turn; // the player's turn
+	COLOR you;	// the player being sent to
 	int board[8][8][2];
+	int last_move[2][2];
 } packet;
 
 char piece_codes[] = {' ', 'p', 'b', 'n', 'r', 'q', 'k'};
@@ -143,8 +145,10 @@ class Board {
 
   public:
 	COLOR player_turn;
+	COLOR me;
 	Logger *logger;
 	bool stage = true;
+	Move last_move;
 
 	BoardRow &operator[](int index) {
 		return rows[index];
@@ -213,6 +217,8 @@ class Board {
 			move.to_string(str);
 			logger->note("made move \"%s\", score = %i", str, get_score());
 		}
+
+		last_move = move;
 	}
 
 	bool validate(std::vector<Move> &moves, Move move) {
@@ -442,6 +448,10 @@ class Board {
 
 void board_to_packet(Board &board, packet &board_binary) {
 	board_binary.turn = board.player_turn;
+	board_binary.last_move[0][0] = board.last_move.start.x;
+	board_binary.last_move[0][1] = board.last_move.start.y;
+	board_binary.last_move[1][0] = board.last_move.end.x;
+	board_binary.last_move[1][1] = board.last_move.end.y;
 
 	for (int y = 0; y < 8; y++) {
 		for (int x = 0; x < 8; x++) {
@@ -452,7 +462,12 @@ void board_to_packet(Board &board, packet &board_binary) {
 }
 
 void packet_to_board(Board &board, packet &board_binary) {
+	board.me = board_binary.you;
 	board.player_turn = board_binary.turn;
+	board.last_move.start.x = board_binary.last_move[0][0];
+	board.last_move.start.y = board_binary.last_move[0][1];
+	board.last_move.end.x = board_binary.last_move[1][0];
+	board.last_move.end.y = board_binary.last_move[1][1];
 
 	for (int y = 0; y < 8; y++) {
 		for (int x = 0; x < 8; x++) {

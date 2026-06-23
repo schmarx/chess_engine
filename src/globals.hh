@@ -4,7 +4,7 @@
 
 #include "logger.hh"
 
-#define PORT 1338
+#define PORT 1337
 #define MOVE_BUF_LEN 10
 #define TCP_BUF_LEN 1000
 
@@ -35,6 +35,7 @@ typedef struct {
 	COLOR you;	// the player being sent to
 	int board[8][8][2];
 	int last_move[2][2];
+	PIECE_TYPE captured;
 } packet;
 
 char piece_codes[] = {' ', 'p', 'b', 'n', 'r', 'q', 'k'};
@@ -63,8 +64,7 @@ class Pos {
 
 	// if the move is in the board
 	bool in_board() {
-		if (x >= 0 && x < 8 && y >= 0 && y < 8) return true;
-		return false;
+		return x >= 0 && x < 8 && y >= 0 && y < 8;
 	}
 };
 
@@ -123,9 +123,15 @@ class Piece {
 		color = NONE;
 	}
 
-	Piece(PIECE_TYPE type, COLOR is_white) {
+	Piece(PIECE_TYPE type, COLOR color) {
 		this->type = type;
-		color = is_white;
+		this->color = color;
+	}
+
+	static COLOR opp(COLOR color) {
+		if (color == WHITE) return BLACK;
+		else if (color == BLACK) return WHITE;
+		return NONE;
 	}
 };
 
@@ -149,6 +155,7 @@ class Board {
 	Logger *logger;
 	bool stage = true;
 	Move last_move;
+	PIECE_TYPE captured;
 
 	BoardRow &operator[](int index) {
 		return rows[index];
@@ -209,6 +216,8 @@ class Board {
 		Pos start = move.start;
 		Pos end = move.end;
 
+		captured = rows[end.y][end.x].type;
+
 		rows[end.y][end.x] = rows[start.y][start.x];
 		rows[start.y][start.x] = Piece();
 		if (rows[end.y][end.x].type == PIECE_PAWN && (end.y == 0 || end.y == 7)) {
@@ -233,15 +242,19 @@ class Board {
 	}
 
 	bool is_turn(Pos pos) {
-		return rows[pos.y][pos.x].color == player_turn;
+		return pos.in_board() && rows[pos.y][pos.x].color == player_turn;
 	}
 
 	bool is_opp(Pos pos) {
-		return rows[pos.y][pos.x].color != player_turn && !is_empty(pos);
+		return pos.in_board() && rows[pos.y][pos.x].color != player_turn && !is_empty(pos);
+	}
+
+	bool is_me(Pos pos) {
+		return pos.in_board() && rows[pos.y][pos.x].color == player_turn;
 	}
 
 	bool is_empty(Pos pos) {
-		return rows[pos.y][pos.x].color == NONE || rows[pos.y][pos.x].type == PIECE_EMPTY;
+		return pos.in_board() && rows[pos.y][pos.x].color == NONE || rows[pos.y][pos.x].type == PIECE_EMPTY;
 	}
 
 	void init() {
@@ -316,6 +329,106 @@ class Board {
 		add_move(moves, Move(start, pos));
 	}
 
+	int iterate_move_protected(Pos start, int dx, int dy) {
+		Pos pos = start;
+		pos.x += dx;
+		pos.y += dy;
+
+		while (pos.x < 8 && pos.x >= 0 && pos.y < 8 && pos.y >= 0) {
+			if (!is_empty(pos)) {
+				// the line is interrupted
+				if (is_me(pos)) return 1;
+				return 0;
+			}
+
+			pos.x += dx;
+			pos.y += dy;
+		}
+
+		if (is_me(pos)) return 1;
+		return 0;
+	}
+
+	int protected_pieces() {
+		int count = 0;
+		for (int y = 0; y < 8; y++) {
+			for (int x = 0; x < 8; x++) {
+				if (rows[y][x].color == player_turn) {
+					Pos start = Pos(x, y);
+
+					switch (rows[start.y][start.x].type) {
+					case PIECE_PAWN:
+
+						if (is_me(Pos(x + 1, y + UP()))) count++;
+						if (is_me(Pos(x - 1, y + UP()))) count++;
+
+						break;
+
+					case PIECE_BISHOP:
+						count += iterate_move_protected(start, 1, 1);
+						count += iterate_move_protected(start, 1, -1);
+						count += iterate_move_protected(start, -1, 1);
+						count += iterate_move_protected(start, -1, -1);
+
+						break;
+
+					case PIECE_ROOK:
+						count += iterate_move_protected(start, 0, 1);
+						count += iterate_move_protected(start, 0, -1);
+						count += iterate_move_protected(start, 1, 0);
+						count += iterate_move_protected(start, -1, 0);
+
+						break;
+
+					case PIECE_KNIGHT:
+						if (is_me(Pos(x + 1, y + 2))) count++;
+						if (is_me(Pos(x + 1, y - 2))) count++;
+						if (is_me(Pos(x - 1, y + 2))) count++;
+						if (is_me(Pos(x - 1, y - 2))) count++;
+
+						if (is_me(Pos(x + 2, y + 1))) count++;
+						if (is_me(Pos(x + 2, y - 1))) count++;
+						if (is_me(Pos(x - 2, y + 1))) count++;
+						if (is_me(Pos(x - 2, y - 1))) count++;
+
+						break;
+
+					case PIECE_QUEEN:
+						count += iterate_move_protected(start, 1, 1);
+						count += iterate_move_protected(start, 1, -1);
+						count += iterate_move_protected(start, -1, 1);
+						count += iterate_move_protected(start, -1, -1);
+
+						count += iterate_move_protected(start, 0, 1);
+						count += iterate_move_protected(start, 0, -1);
+						count += iterate_move_protected(start, 1, 0);
+						count += iterate_move_protected(start, -1, 0);
+
+						break;
+
+					case PIECE_KING:
+						if (is_me(Pos(x, y + 1))) count++;
+						if (is_me(Pos(x, y - 1))) count++;
+						if (is_me(Pos(x + 1, y))) count++;
+						if (is_me(Pos(x - 1, y))) count++;
+
+						if (is_me(Pos(x + 1, y + 1))) count++;
+						if (is_me(Pos(x + 1, y - 1))) count++;
+						if (is_me(Pos(x - 1, y + 1))) count++;
+						if (is_me(Pos(x - 1, y - 1))) count++;
+
+						break;
+
+					default:
+						break;
+					}
+				}
+			}
+		}
+
+		return count;
+	}
+
 	std::vector<Move> get_valid_moves() {
 		struct timespec start;
 		struct timespec end;
@@ -333,7 +446,7 @@ class Board {
 						if (is_empty(Pos(x, y + UP()))) add_move(moves, Move(start, Pos(x, y + UP())));
 						if (is_opp(Pos(x + 1, y + UP()))) add_move(moves, Move(start, Pos(x + 1, y + UP())));
 						if (is_opp(Pos(x - 1, y + UP()))) add_move(moves, Move(start, Pos(x - 1, y + UP())));
-						if (is_empty(Pos(x, y + UP())) && is_empty(Pos(x, y + UPP()))) add_move(moves, Move(start, Pos(x, y + UPP())));
+						if ((y == 1 || y == 6) && is_empty(Pos(x, y + UP())) && is_empty(Pos(x, y + UPP()))) add_move(moves, Move(start, Pos(x, y + UPP())));
 
 						break;
 
@@ -455,6 +568,7 @@ void board_to_packet(Board &board, packet &board_binary) {
 	board_binary.last_move[0][1] = board.last_move.start.y;
 	board_binary.last_move[1][0] = board.last_move.end.x;
 	board_binary.last_move[1][1] = board.last_move.end.y;
+	board_binary.captured = board.captured;
 
 	for (int y = 0; y < 8; y++) {
 		for (int x = 0; x < 8; x++) {
@@ -471,6 +585,7 @@ void packet_to_board(Board &board, packet &board_binary) {
 	board.last_move.start.y = board_binary.last_move[0][1];
 	board.last_move.end.x = board_binary.last_move[1][0];
 	board.last_move.end.y = board_binary.last_move[1][1];
+	board.captured = board_binary.captured;
 
 	for (int y = 0; y < 8; y++) {
 		for (int x = 0; x < 8; x++) {

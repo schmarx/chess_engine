@@ -91,6 +91,8 @@ class engine {
 			board_binary.you = WHITE;
 			send(gui_clients[i], (void *)&board_binary, sizeof(packet), 0);
 		}
+
+		board.captured = PIECE_EMPTY;
 	}
 
 	void create_listener() {
@@ -130,8 +132,7 @@ class engine {
 				gui_clients.push_back(client);
 				logger.net("received connection (%i connections total)", gui_clients.size());
 
-				COLOR player_color = WHITE;
-				board_binary.you = player_color;
+				board_binary.you = WHITE;
 				send(client, (void *)&board_binary, sizeof(packet), 0);
 			}
 

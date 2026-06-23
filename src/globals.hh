@@ -211,6 +211,9 @@ class Board {
 
 		rows[end.y][end.x] = rows[start.y][start.x];
 		rows[start.y][start.x] = Piece();
+		if (rows[end.y][end.x].type == PIECE_PAWN && (end.y == 0 || end.y == 7)) {
+			rows[end.y][end.x].type = PIECE_QUEEN;
+		}
 
 		if (stage) {
 			char str[12] = "";

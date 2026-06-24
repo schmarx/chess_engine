@@ -24,6 +24,8 @@ typedef enum {
 	PIECE_KING
 } PIECE_TYPE;
 
+int piece_values[] = {0, 1, 3, 3, 5, 9, 100000};
+
 typedef enum {
 	NONE,
 	WHITE,
@@ -157,6 +159,11 @@ class Board {
 	Move last_move;
 	PIECE_TYPE captured;
 
+	bool allow_castle_left_white = true;
+	bool allow_castle_left_black = true;
+	bool allow_castle_right_white = true;
+	bool allow_castle_right_black = true;
+
 	BoardRow &operator[](int index) {
 		return rows[index];
 	}
@@ -174,54 +181,51 @@ class Board {
 		int score = 0;
 		for (int y = 0; y < 8; y++) {
 			for (int x = 0; x < 8; x++) {
-				int add = 0;
-
-				switch (rows[y][x].type) {
-				case PIECE_PAWN:
-					add = 1;
-					break;
-
-				case PIECE_BISHOP:
-					add = 3;
-					break;
-
-				case PIECE_ROOK:
-					add = 5;
-					break;
-
-				case PIECE_KNIGHT:
-					add = 3;
-					break;
-
-				case PIECE_QUEEN:
-					add = 9;
-					break;
-
-				case PIECE_KING:
-					add = 100000;
-					break;
-
-				default:
-					break;
-				}
-
-				score += add * pawn_dir[rows[y][x].color];
+				score += piece_values[rows[y][x].type] * pawn_dir[rows[y][x].color];
 			}
 		}
 
 		return score;
 	}
 
-	void commit(Move move) {
+	void check_castle_rights(Pos pos) {
+		// a rook position
+		if (pos.x == 0) {
+			if (pos.y == 0) allow_castle_left_white = false;
+			else if (pos.y == 7) allow_castle_left_black = false;
+		} else if (pos.x == 7) {
+			if (pos.y == 0) allow_castle_right_white = false;
+			else if (pos.y == 7) allow_castle_right_black = false;
+		} else if (pos.x == 4) {
+			// king position
+			if (pos.y == 0) {
+				allow_castle_left_white = false;
+				allow_castle_right_white = false;
+			} else if (pos.y == 7) {
+				allow_castle_left_black = false;
+				allow_castle_right_black = false;
+			}
+		}
+	}
+
+	// commits move and returns change in score
+	int commit(Move move) {
 		Pos start = move.start;
 		Pos end = move.end;
 
 		captured = rows[end.y][end.x].type;
 
+		check_castle_rights(start);
+		check_castle_rights(end);
+
+		int change = pawn_dir[player_turn] * piece_values[captured];
+
 		rows[end.y][end.x] = rows[start.y][start.x];
 		rows[start.y][start.x] = Piece();
 		if (rows[end.y][end.x].type == PIECE_PAWN && (end.y == 0 || end.y == 7)) {
 			rows[end.y][end.x].type = PIECE_QUEEN;
+
+			change += piece_values[rows[end.y][end.x].type] - 1; // remove a pawn and add the promoted piece
 		}
 
 		if (stage) {
@@ -231,6 +235,8 @@ class Board {
 		}
 
 		last_move = move;
+
+		return change;
 	}
 
 	bool validate(std::vector<Move> &moves, Move move) {
@@ -259,6 +265,8 @@ class Board {
 
 	void init() {
 		clear();
+		last_move.start = Pos(-1, -1);
+		last_move.end = Pos(-1, -1);
 
 		for (int x = 0; x < 8; x++) {
 			rows[1][x] = Piece(PIECE_PAWN, WHITE);

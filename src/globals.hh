@@ -215,6 +215,18 @@ class Board {
 
 		captured = rows[end.y][end.x].type;
 
+		if (rows[start.y][start.x].type == PIECE_KING) {
+			if (end.x - start.x == 2) {
+				// king side castle
+				rows[start.y][start.x + 1] = rows[start.y][7];
+				rows[start.y][7] = Piece();
+			} else if (end.x - start.x == -2) {
+				// queen side castle
+				rows[start.y][start.x - 1] = rows[start.y][0];
+				rows[start.y][0] = Piece();
+			}
+		}
+
 		check_castle_rights(start);
 		check_castle_rights(end);
 
@@ -510,6 +522,14 @@ class Board {
 						add_move(moves, Move(start, Pos(x + 1, y - 1)));
 						add_move(moves, Move(start, Pos(x - 1, y + 1)));
 						add_move(moves, Move(start, Pos(x - 1, y - 1)));
+
+						// TODO: check that the move does not cross check
+						if ((player_turn == WHITE && allow_castle_right_white) || (player_turn == BLACK && allow_castle_right_black)) {
+							if (is_empty(Pos(5, y)) && is_empty(Pos(6, y))) add_move(moves, Move(start, Pos(6, y)));
+						}
+						if ((player_turn == WHITE && allow_castle_left_white) || (player_turn == BLACK && allow_castle_left_black)) {
+							if (is_empty(Pos(3, y)) && is_empty(Pos(2, y)) && is_empty(Pos(1, y))) add_move(moves, Move(start, Pos(2, y)));
+						}
 
 						break;
 

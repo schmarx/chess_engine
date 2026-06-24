@@ -16,6 +16,17 @@
 
 namespace chess {
 
+class client_t {
+  public:
+	int socket;
+	COLOR color;
+
+	client_t(int socket, COLOR color) {
+		this->socket = socket;
+		this->color = color;
+	}
+};
+
 class engine {
   public:
 	bool running = true;
@@ -23,15 +34,10 @@ class engine {
 	Board board;
 	packet board_binary;
 
-	bool allow_castle_left_white;
-	bool allow_castle_left_black;
-	bool allow_castle_right_white;
-	bool allow_castle_right_black;
-
 	char next_move[20];
 	volatile bool has_move = false;
 
-	std::vector<int> gui_clients;
+	std::vector<client_t> gui_clients;
 	std::thread thread;
 	Logger logger;
 
@@ -88,8 +94,8 @@ class engine {
 		logger.net("sending board to %li clients", gui_clients.size());
 
 		for (size_t i = 0; i < gui_clients.size(); i++) {
-			board_binary.you = WHITE;
-			send(gui_clients[i], (void *)&board_binary, sizeof(packet), 0);
+			board_binary.you = gui_clients[i].color;
+			send(gui_clients[i].socket, (void *)&board_binary, sizeof(packet), 0);
 		}
 
 		board.captured = PIECE_EMPTY;
@@ -129,16 +135,21 @@ class engine {
 				}
 			} else {
 				// a connection is received
-				gui_clients.push_back(client);
+				COLOR col = NONE;
+
+				// the first two clients get a color assigned
+				if (gui_clients.size() == 0) col = WHITE;
+				else if (gui_clients.size() == 1) col = BLACK;
+				gui_clients.push_back(client_t(client, col));
 				logger.net("received connection (%i connections total)", gui_clients.size());
 
-				board_binary.you = WHITE;
+				board_binary.you = gui_clients[gui_clients.size() - 1].color;
 				send(client, (void *)&board_binary, sizeof(packet), 0);
 			}
 
 			for (size_t i = 0; i < gui_clients.size(); i++) {
 				char buf[TCP_BUF_LEN] = {0};
-				int res = recv(gui_clients[i], buf, TCP_BUF_LEN, 0);
+				int res = recv(gui_clients[i].socket, buf, TCP_BUF_LEN, 0);
 
 				if (res == 0) {
 					// inactive connection

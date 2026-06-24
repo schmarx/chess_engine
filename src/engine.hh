@@ -44,7 +44,11 @@ class engine {
 	engine() {
 		printf("\n");
 		logger.note("starting engine");
-		board.init();
+		if (!board.init()) {
+			close_engine();
+			return;
+		}
+
 		board.logger = &logger;
 		board_to_packet(board, board_binary);
 	}

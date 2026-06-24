@@ -275,35 +275,53 @@ class Board {
 		return pos.in_board() && rows[pos.y][pos.x].color == NONE || rows[pos.y][pos.x].type == PIECE_EMPTY;
 	}
 
-	void init() {
-		clear();
+	bool load_board(const char *filename) {
+		FILE *file = fopen(filename, "r");
+
+		if (file == NULL) {
+			logger->err("could not open board");
+			return false;
+		}
+
+		size_t last_size = 0;
+		char buf[128];
+
+		fgets(buf, sizeof(buf), file);
+		sscanf(buf, "%i", &player_turn);
+
+		allow_castle_left_white = fgetc(file) == '1';
+		fgetc(file);
+		allow_castle_right_white = fgetc(file) == '1';
+		fgetc(file);
+		allow_castle_left_black = fgetc(file) == '1';
+		fgetc(file);
+		allow_castle_right_black = fgetc(file) == '1';
+		fgets(buf, sizeof(buf), file);
+
+		for (int y = 7; y >= 0; y--) {
+			for (int x = 0; x < 8; x++) {
+				char piece = fgetc(file) - '0';
+				char color = fgetc(file) - '0';
+				if (x < 7) fgetc(file); // get the space
+				rows[y][x] = Piece((PIECE_TYPE)piece, (COLOR)color);
+			}
+
+			fgets(buf, sizeof(buf), file);
+		}
+
+		fclose(file);
+
+		return true;
+	}
+
+	bool init() {
 		last_move.start = Pos(-1, -1);
 		last_move.end = Pos(-1, -1);
 
-		for (int x = 0; x < 8; x++) {
-			rows[1][x] = Piece(PIECE_PAWN, WHITE);
-			rows[6][x] = Piece(PIECE_PAWN, BLACK);
-		}
+		clear();
+		if (!load_board("boards/start.txt")) return false;
 
-		rows[0][0] = Piece(PIECE_ROOK, WHITE);
-		rows[0][7] = Piece(PIECE_ROOK, WHITE);
-		rows[0][2] = Piece(PIECE_BISHOP, WHITE);
-		rows[0][5] = Piece(PIECE_BISHOP, WHITE);
-		rows[0][1] = Piece(PIECE_KNIGHT, WHITE);
-		rows[0][6] = Piece(PIECE_KNIGHT, WHITE);
-		rows[0][3] = Piece(PIECE_QUEEN, WHITE);
-		rows[0][4] = Piece(PIECE_KING, WHITE);
-
-		rows[7][0] = Piece(PIECE_ROOK, BLACK);
-		rows[7][7] = Piece(PIECE_ROOK, BLACK);
-		rows[7][2] = Piece(PIECE_BISHOP, BLACK);
-		rows[7][5] = Piece(PIECE_BISHOP, BLACK);
-		rows[7][1] = Piece(PIECE_KNIGHT, BLACK);
-		rows[7][6] = Piece(PIECE_KNIGHT, BLACK);
-		rows[7][3] = Piece(PIECE_QUEEN, BLACK);
-		rows[7][4] = Piece(PIECE_KING, BLACK);
-
-		player_turn = WHITE;
+		return true;
 	}
 
 	// this evaluates what moves are allowed if the given move was made

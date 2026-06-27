@@ -315,6 +315,30 @@ class Board {
 		return true;
 	}
 
+	bool save_board(const char *filename) {
+		FILE *file = fopen(filename, "w");
+
+		if (file == NULL) {
+			logger->err("could not open board \"%s\"", filename);
+			return false;
+		}
+
+		fprintf(file, "%i\n", player_turn);
+		fprintf(file, "%i %i %i %i\n", allow_castle_left_white, allow_castle_right_white, allow_castle_left_black, allow_castle_right_black);
+
+		for (int y = 7; y >= 0; y--) {
+			for (int x = 0; x < 8; x++) {
+				fprintf(file, "%i%i", rows[y][x].type, rows[y][x].color);
+				if (x < 7) fprintf(file, " ");
+			}
+			fprintf(file, "\n");
+		}
+
+		fclose(file);
+
+		return true;
+	}
+
 	bool init() {
 		last_move.start = Pos(-1, -1);
 		last_move.end = Pos(-1, -1);

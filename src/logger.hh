@@ -33,7 +33,7 @@ class Logger {
 		if (val < 10) {
 			strcat(str, "0");
 		}
-		char buf[4] = "";
+		char buf[12] = "";
 		sprintf(buf, "%i", val);
 		strcat(str, buf);
 	}

@@ -272,7 +272,7 @@ class Board {
 	}
 
 	bool is_empty(Pos pos) {
-		return pos.in_board() && rows[pos.y][pos.x].color == NONE || rows[pos.y][pos.x].type == PIECE_EMPTY;
+		return pos.in_board() && (rows[pos.y][pos.x].color == NONE || rows[pos.y][pos.x].type == PIECE_EMPTY);
 	}
 
 	bool load_board(const char *filename) {
@@ -283,11 +283,12 @@ class Board {
 			return false;
 		}
 
-		size_t last_size = 0;
 		char buf[128];
 
+		int turn;
 		fgets(buf, sizeof(buf), file);
-		sscanf(buf, "%i", &player_turn);
+		sscanf(buf, "%i", &turn);
+		player_turn = (COLOR)turn;
 
 		allow_castle_left_white = fgetc(file) == '1';
 		fgetc(file);
